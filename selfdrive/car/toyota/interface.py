@@ -29,6 +29,9 @@ class CarInterface(CarInterfaceBase):
     ret.steerLimitTimer = 0.4
     ret.stoppingControl = False  # Toyota starts braking more when it thinks you want to stop
 
+    ret.startAccel = 0.0
+    ret.startingAccelRate = 40.
+
     stop_and_go = False
     steering_angle_deadzone_deg = 0.0
     CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning, steering_angle_deadzone_deg)
