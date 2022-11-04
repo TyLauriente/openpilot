@@ -436,11 +436,7 @@ EVENTS: Dict[int, Dict[str, Union[Alert, AlertCallbackType]]] = {
   },
 
   EventName.steerTempUnavailableSilent: {
-    ET.WARNING: Alert(
-      "Steering Temporarily Unavailable",
-      "",
-      AlertStatus.userPrompt, AlertSize.small,
-      Priority.LOW, VisualAlert.steerRequired, AudibleAlert.prompt, 1.8),
+    ET.WARNING: NormalPermanentAlert("Steering Temporarily Unavailable"),
   },
 
   EventName.preDriverDistracted: {
@@ -610,17 +606,11 @@ EVENTS: Dict[int, Dict[str, Union[Alert, AlertCallbackType]]] = {
   },
 
   EventName.pedalPressed: {
-    ET.USER_DISABLE: EngagementAlert(AudibleAlert.disengage),
-    ET.NO_ENTRY: NoEntryAlert("Pedal Pressed",
-                              visual_alert=VisualAlert.brakePressed),
+    ET.WARNING: NormalPermanentAlert("Brake Pressed"),
   },
 
   EventName.pedalPressedPreEnable: {
-    ET.PRE_ENABLE: Alert(
-      "Release Pedal to Engage",
-      "",
-      AlertStatus.normal, AlertSize.small,
-      Priority.LOWEST, VisualAlert.none, AudibleAlert.none, .1, creation_delay=1.),
+    ET.WARNING: NormalPermanentAlert("Brake Pressed"),
   },
 
   EventName.gasPressedOverride: {
