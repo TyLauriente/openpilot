@@ -33,6 +33,8 @@ Sound::Sound(QObject *parent) : sm({"controlsState", "microphone"}) {
 void Sound::update() {
   sm.update(0);
 
+  return;
+
   // scale volume using ambient noise level
   if (sm.updated("microphone")) {
     float volume = util::map_val(sm["microphone"].getMicrophone().getFilteredSoundPressureWeightedDb(), 30.f, 60.f, 0.f, 1.f);
