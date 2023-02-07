@@ -18,16 +18,16 @@ class CarControllerParams:
   ACCEL_MAX = 1.5  # m/s2, lower than allowed 2.0 m/s2 for tuning reasons
   ACCEL_MIN = -3.5  # m/s2
 
-  STEER_MAX = 2000
-  STEER_ERROR_MAX = 1000     # max delta between torque cmd and torque motor
+  STEER_MAX = 1500
+  STEER_ERROR_MAX = 350     # max delta between torque cmd and torque motor
 
   def __init__(self, CP, vEgoRaw=100.):
     if CP.lateralTuning.which == 'torque':
       self.STEER_DELTA_UP = 40       # 1.0s time to peak torque
-      self.STEER_DELTA_DOWN = 50     # always lower than 45 otherwise the Rav4 faults (Prius seems ok with 50)
+      self.STEER_DELTA_DOWN = 40     # always lower than 45 otherwise the Rav4 faults (Prius seems ok with 50)
     else:
       self.STEER_DELTA_UP = 40       # 1.5s time to peak torque
-      self.STEER_DELTA_DOWN = 50     # always lower than 45 otherwise the Rav4 faults (Prius seems ok with 50)
+      self.STEER_DELTA_DOWN = 40     # always lower than 45 otherwise the Rav4 faults (Prius seems ok with 50)
 
 
 class ToyotaFlags(IntFlag):
