@@ -139,7 +139,7 @@ void TogglesPanel::updateToggles() {
 
     op_long_toggle->setVisible(true);
 
-    const bool op_long = true;
+    const bool op_long = false;
     const bool exp_long_enabled = true;
     if (op_long || exp_long_enabled) {
       // normal description and toggle
