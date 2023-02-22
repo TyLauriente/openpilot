@@ -200,8 +200,7 @@ void ExperimentalButton::updateState(const UIState &s) {
   setChecked(sm["controlsState"].getControlsState().getExperimentalMode());
 
   // disable button when experimental mode is not available, or has not been confirmed for the first time
-  const auto cp = sm["carParams"].getCarParams();
-  const bool experimental_mode_available = cp.getExperimentalLongitudinalAvailable() ? params.getBool("ExperimentalLongitudinalEnabled") : cp.getOpenpilotLongitudinalControl();
+  const bool experimental_mode_available = true;
   setEnabled(params.getBool("ExperimentalModeConfirmed") && experimental_mode_available);
 }
 

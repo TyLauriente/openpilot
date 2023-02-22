@@ -188,7 +188,7 @@ def get_car_params(msgs, fsm, can_sock, fingerprint):
     canmsgs = [msg for msg in msgs if msg.which() == 'can']
     for m in canmsgs[:300]:
       can.send(m.as_builder().to_bytes())
-    _, CP = get_car(can, sendcan, Params().get_bool("ExperimentalLongitudinalEnabled"))
+    _, CP = get_car(can, sendcan, True)
   Params().put("CarParams", CP.to_bytes())
 
 
@@ -445,8 +445,7 @@ def setup_env(simulation=False, CP=None, cfg=None, controlsState=None):
       os.environ['SKIP_FW_QUERY'] = "1"
       os.environ['FINGERPRINT'] = CP.carFingerprint
 
-    if CP.openpilotLongitudinalControl:
-      params.put_bool("ExperimentalLongitudinalEnabled", True)
+    params.put_bool("ExperimentalLongitudinalEnabled", True)
 
     # controlsd process configuration assume all routes are out of dashcam
     params.put_bool("DashcamOverride", True)

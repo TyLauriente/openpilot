@@ -111,7 +111,7 @@ class Plant:
 
     control.controlsState.longControlState = LongCtrlState.pid if self.enabled else LongCtrlState.off
     control.controlsState.vCruise = float(v_cruise * 3.6)
-    control.controlsState.experimentalMode = self.e2e
+    control.controlsState.experimentalMode = True
     control.controlsState.forceDecel = self.force_decel
     car_state.carState.vEgo = float(self.speed)
     car_state.carState.standstill = self.speed < 0.01
