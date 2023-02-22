@@ -143,10 +143,10 @@ class CarInterface(CarInterfaceBase):
     elif candidate in (CAR.COROLLA_TSS2, CAR.COROLLAH_TSS2):
       stop_and_go = True
       ret.wheelbase = 2.7  # Average between 2.70 for sedan and 2.64 for hatchback
-      ret.steerRatio = 14.5
-      tire_stiffness_factor = 0.75  # not optimized yet
+      ret.steerRatio = 18.0
+      tire_stiffness_factor = 0.99  # not optimized yet
       ret.mass = 3110. * CV.LB_TO_KG + STD_CARGO_KG
-      ret.steerActuatorDelay = 0.4
+      ret.steerActuatorDelay = 0.025
 
     elif candidate in (CAR.LEXUS_ES_TSS2, CAR.LEXUS_ESH_TSS2, CAR.LEXUS_ESH):
       stop_and_go = True
