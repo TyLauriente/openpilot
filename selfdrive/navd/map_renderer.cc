@@ -11,7 +11,8 @@
 #include "selfdrive/ui/qt/maps/map_helpers.h"
 
 const float DEFAULT_ZOOM = 13.5; // Don't go below 13 or features will start to disappear
-const int HEIGHT = 256, WIDTH = 256;
+const int HEIGHT = 512, WIDTH = 512;
+const int MODEL_HEIGHT = 256, MODEL_WIDTH = 256;
 const int NUM_VIPC_BUFFERS = 4;
 
 const int EARTH_CIRCUMFERENCE_METERS = 40075000;
@@ -70,7 +71,7 @@ MapRenderer::MapRenderer(const QMapboxGLSettings &settings, bool online) : m_set
 
   if (online) {
     vipc_server.reset(new VisionIpcServer("navd"));
-    vipc_server->create_buffers(VisionStreamType::VISION_STREAM_MAP, NUM_VIPC_BUFFERS, false, WIDTH/2, HEIGHT/2);
+    vipc_server->create_buffers(VisionStreamType::VISION_STREAM_MAP, NUM_VIPC_BUFFERS, false, MODEL_WIDTH, MODEL_HEIGHT);
     vipc_server->start_listener();
 
     pm.reset(new PubMaster({"navThumbnail", "mapRenderState"}));
@@ -179,8 +180,10 @@ void MapRenderer::publish(const double render_time) {
 
   // RGB to greyscale
   memset(dst, 128, buf->len);
-  for (int i = 0; i < WIDTH * HEIGHT; i++) {
-    dst[i] = src[i * 3];
+  for (int r = 0; r < MODEL_HEIGHT; r++) {
+    for (int c = 0; c < MODEL_WIDTH; c++) {
+      dst[r*MODEL_WIDTH + c] = src[((r+128)*WIDTH + (c+128)) * 3];
+    }
   }
 
   vipc_server->send(buf, &extra);
