@@ -132,13 +132,6 @@ void run_model(ModelState &model, VisionIpcClient &vipc_client_main, VisionIpcCl
       live_calib_seen = true;
     }
 
-    if (sm.updated("navModel")) {
-      auto nav_model_features = sm["navModel"].getNavModel().getFeatures();
-      for (int i=0; i<NAV_FEATURE_LEN; i++) {
-        nav_features[i] = nav_model_features[i];
-      }
-    }
-
     float vec_desire[DESIRE_LEN] = {0};
     if (desire >= 0 && desire < DESIRE_LEN) {
       vec_desire[desire] = 1.0;
