@@ -90,7 +90,7 @@ class Controls:
         ignore += ['roadCameraState']
       self.sm = messaging.SubMaster(['deviceState', 'pandaStates', 'peripheralState', 'modelV2', 'liveCalibration',
                                      'driverMonitoringState', 'longitudinalPlan', 'lateralPlan', 'liveLocationKalman',
-                                     'managerState', 'liveParameters', 'radarState', 'liveTorqueParameters', 'testJoystick'] + self.camera_packets,
+                                     'managerState', 'liveParameters', 'radarState', 'liveTorqueParameters', 'testJoystick', 'navInstruction'] + self.camera_packets,
                                     ignore_alive=ignore, ignore_avg_freq=['radarState', 'longitudinalPlan', 'testJoystick'])
 
     if CI is None:
@@ -183,6 +183,12 @@ class Controls:
     self.experimental_mode = False
     self.v_cruise_helper = VCruiseHelper(self.CP)
 
+    self.laneline_filters = [FirstOrderFilter(0., 2., 0.05) for _ in range(4)]
+    self.last_on_ramp_right = False
+    self.last_on_ramp_right_timer = 0.0
+    self.last_lane_change_dir = LaneChangeDirection.none
+    self.last_lane_change_frame = 0.
+
     # TODO: no longer necessary, aside from process replay
     self.sm['liveParameters'].valid = True
     self.can_log_mono_time = 0
@@ -216,6 +222,36 @@ class Controls:
 
       if any(ps.controlsAllowed for ps in self.sm['pandaStates']):
         self.state = State.enabled
+
+  def handle_nav_lane_changes(self, CS):
+    if self.sm.updated['modelV2']:
+      for i in range(4):
+        self.laneline_filters[i].update(self.sm['modelV2'].laneLineProbs[i])
+    if self.sm['navInstruction'].maneuverType in ('on ramp', 'turn') and self.sm['navInstruction'].maneuverModifier == 'right':
+      self.last_on_ramp_right = True
+      self.last_on_ramp_right_timer = 0.0
+
+    self.last_on_ramp_right_timer += DT_CTRL if self.last_on_ramp_right else 0.0
+    if (self.last_on_ramp_right and self.sm['lateralPlan'].laneChangeState == LaneChangeState.laneChangeFinishing) or \
+       self.last_on_ramp_right_timer > 60:
+      self.last_on_ramp_right = False
+      self.last_on_ramp_right_timer = 0.0
+
+    desired_dir = LaneChangeDirection.none
+    if CS.vEgo > 15.:
+      if self.laneline_filters[0].x > 0.3 and self.last_on_ramp_right and self.last_on_ramp_right_timer > 2.0:
+        desired_dir = LaneChangeDirection.left
+      elif self.laneline_filters[3].x > 0.5 and self.sm['navInstruction'].maneuverType == 'off ramp' and \
+           self.sm['navInstruction'].maneuverModifier == 'right' and self.sm['navInstruction'].maneuverDistance < (1.5 * 1609.34):
+        desired_dir = LaneChangeDirection.right
+
+    CS = CS.as_builder()
+    if (desired_dir != LaneChangeDirection.none) and ((self.last_lane_change_dir == desired_dir) or (self.sm.frame - self.last_lane_change_frame)*DT_CTRL > 15.0):
+      CS.leftBlinker = CS.leftBlinker or (desired_dir == LaneChangeDirection.left)
+      CS.rightBlinker = CS.rightBlinker or (desired_dir == LaneChangeDirection.right)
+      self.last_lane_change_dir = desired_dir
+      self.last_lane_change_frame = self.sm.frame
+    return CS.as_reader()
 
   def update_events(self, CS):
     """Compute carEvents from carState"""
@@ -430,6 +466,7 @@ class Controls:
       self.can_log_mono_time = messaging.log_from_bytes(can_strs[0]).logMonoTime
 
     self.sm.update(0)
+    CS = self.handle_nav_lane_changes(CS)
 
     if not self.initialized:
       all_valid = CS.canValid and self.sm.all_checks()
