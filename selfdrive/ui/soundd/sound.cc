@@ -33,6 +33,8 @@ void Sound::update() {
   const bool started_prev = sm["deviceState"].getDeviceState().getStarted();
   sm.update(0);
 
+  return;
+
   const bool started = sm["deviceState"].getDeviceState().getStarted();
   if (started && !started_prev) {
     started_frame = sm.frame;
