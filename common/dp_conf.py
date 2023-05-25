@@ -72,7 +72,6 @@ confs = [
   {'name': 'dp_ui_laneline', 'default': True, 'type': 'Bool', 'conf_type': ['param', 'struct']},
   {'name': 'dp_ui_chevron', 'default': True, 'type': 'Bool', 'conf_type': ['param', 'struct']},
   {'name': 'dp_ui_dm_cam', 'default': True, 'type': 'Bool', 'conf_type': ['param', 'struct']},
-  {'name': 'dp_ui_rainbow', 'default': True, 'type': 'Bool', 'conf_type': ['param', 'struct']},
 
   #toyota
   {'name': 'dp_toyota_sng', 'default': False, 'type': 'Bool', 'conf_type': ['param', 'struct']},
