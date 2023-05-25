@@ -547,14 +547,9 @@ void AnnotatedCameraWidget::drawHud(QPainter &p) {
   drawText(p, rect().center().x(), 290, speedUnit, 200);
 
   // engage-ability icon
-  if (engageable) {
+  if (true) {
     if (showDebugUI && showVTC) {
       drawVisionTurnControllerUI(p, rect().right() - 184 - bdr_s, int(bdr_s * 1.5), 184, vtcColor, vtcSpeed, 100);
-    } else {
-      // engage-ability icon
-      SubMaster &sm = *(uiState()->sm);
-      drawIcon(p, rect().right() - radius / 2 - bdr_s * 2, radius / 2 + int(bdr_s * 1.5),
-               sm["controlsState"].getControlsState().getExperimentalMode() ? experimental_img : engage_img, blackColor(166), 1.0);
     }
 
     // Turn Speed Sign
@@ -562,13 +557,6 @@ void AnnotatedCameraWidget::drawHud(QPainter &p) {
       rc.moveTop(speed_sgn_rc.bottom() + bdr_s);
       drawTurnSpeedSign(p, rc, turnSpeedLimit, mtscSubText, curveSign, mtscActive);
     }
-  }
-
-  // dm icon
-  if (!hideDM) {
-    int dm_icon_x = rightHandDM ? rect().right() - btn_size / 2 - (bdr_s * 2) : btn_size / 2 + (bdr_s * 2);
-    drawIcon(p, dm_icon_x, rect().bottom() - footer_h / 2,
-             dm_img, blackColor(70), dmActive ? 1.0 : 0.2);
   }
 
   // Bottom bar road name
