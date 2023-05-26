@@ -336,7 +336,9 @@ def get_sp_pedal_disengage(self, cs_out):
     regen = cs_out.regenBraking and (not self.CS.out.regenBraking or not cs_out.standstill)
     return brake or regen
 
-def get_sp_common_state(self, cs_out, CS, gear_allowed=True, gap_button=False):
+def get_sp_common_state(self, cs_out, CS):
+    gear_allowed=True
+    
     if self.CP.pcmCruise:
       if not cs_out.cruiseState.enabled and CS.out.cruiseState.enabled:
         CS.madsEnabled, cs_out.cruiseState.enabled = self.get_sp_cancel_cruise_state(CS.madsEnabled)
@@ -347,8 +349,6 @@ def get_sp_common_state(self, cs_out, CS, gear_allowed=True, gap_button=False):
         CS.madsEnabled = True
       elif not cs_out.cruiseState.enabled and CS.out.cruiseState.enabled:
         CS.madsEnabled = False
-
-    self.toggle_exp_mode(gap_button)
 
     cs_out.belowLaneChangeSpeed = cs_out.vEgo < LANE_CHANGE_SPEED_MIN and self.below_speed_pause
 
