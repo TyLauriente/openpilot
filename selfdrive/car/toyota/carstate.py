@@ -273,6 +273,8 @@ class CarState(CarStateBase):
         ("LANE_SWAY_WARNING", "LKAS_HUD"),
         ("LANE_SWAY_SENSITIVITY", "LKAS_HUD"),
         ("LANE_SWAY_TOGGLE", "LKAS_HUD"),
+        ("LKAS_STATUS", "LKAS_HUD"),
+        ("SET_ME_X02", "LKAS_HUD"),
       ]
       checks += [
         ("LKAS_HUD", 1),
