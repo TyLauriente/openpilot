@@ -108,9 +108,20 @@ class Controls:
 
     # set alternative experiences from parameters
     self.disengage_on_accelerator = self.params.get_bool("DisengageOnAccelerator")
+    self.enable_mads = self.params.get_bool("EnableMads")
+    self.mads_disengage_lateral_on_brake = self.params.get_bool("DisengageLateralOnBrake")
+    self.mads_dlob = self.enable_mads and self.mads_disengage_lateral_on_brake
+    self.mads_ndlob = self.enable_mads and not self.mads_disengage_lateral_on_brake
+    if self.enable_mads and self.disengage_on_accelerator:
+      self.params.put_bool("DisengageOnAccelerator", False)
+      self.disengage_on_accelerator = False
     self.CP.alternativeExperience = 0
     if not self.disengage_on_accelerator:
       self.CP.alternativeExperience |= ALTERNATIVE_EXPERIENCE.DISABLE_DISENGAGE_ON_GAS
+    if self.mads_dlob:
+      self.CP.alternativeExperience |= ALTERNATIVE_EXPERIENCE.ENABLE_MADS
+    elif self.mads_ndlob:
+      self.CP.alternativeExperience |= ALTERNATIVE_EXPERIENCE.MADS_DISABLE_DISENGAGE_LATERAL_ON_BRAKE
 
     # read params
     self.is_metric = self.params.get_bool("IsMetric")
@@ -245,16 +256,20 @@ class Controls:
     if (CS.gasPressed and not self.CS_prev.gasPressed and self.disengage_on_accelerator) or \
       (CS.brakePressed and (not self.CS_prev.brakePressed or not CS.standstill)) or \
       (CS.regenBraking and (not self.CS_prev.regenBraking or not CS.standstill)):
-      self.events.add(EventName.pedalPressed)
+      if CS.cruiseState.enabled:
+        self.events.add(EventName.pedalPressed)
+      elif not self.mads_ndlob:
+        self.events.add(EventName.silentPedalPressed)
 
-    if CS.brakePressed and CS.standstill:
+    if CS.brakePressed and CS.standstill and CS.cruiseState.enabled:
       self.events.add(EventName.preEnableStandstill)
 
-    if CS.gasPressed:
+    if CS.gasPressed and CS.cruiseState.enabled:
       self.events.add(EventName.gasPressedOverride)
 
     if not self.CP.notCar:
       self.events.add_from_msg(self.sm['driverMonitoringState'].events)
+      self.events.add_from_msg(self.sm['longitudinalPlan'].eventsDEPRECATED)
 
     # Add car events, ignore if CAN isn't valid
     if CS.canValid:
@@ -574,9 +589,11 @@ class Controls:
 
     # Check which actuators can be enabled
     standstill = CS.vEgo <= max(self.CP.minSteerSpeed, MIN_LATERAL_CONTROL_SPEED) or CS.standstill
-    CC.latActive = self.active and not CS.steerFaultTemporary and not CS.steerFaultPermanent and \
-                   (not standstill or self.joystick_mode)
-    CC.longActive = self.enabled and not self.events.any(ET.OVERRIDE_LONGITUDINAL) and self.CP.openpilotLongitudinalControl
+    CC.latActive = (self.active or self.mads_ndlob) and not CS.steerFaultTemporary and not CS.steerFaultPermanent and \
+                   (not standstill or self.joystick_mode) and CS.madsEnabled and (not CS.brakePressed or self.mads_ndlob) and \
+                   (not CS.belowLaneChangeSpeed or (not (((self.sm.frame - self.last_blinker_frame) * DT_CTRL) < 1.0) and
+                   not (CS.leftBlinker or CS.rightBlinker))) and CS.latActive and self.sm['liveCalibration'].calStatus == Calibration.CALIBRATED
+    CC.longActive = self.enabled_long and not (CS.brakePressed and (not self.CS_prev.brakePressed or not CS.standstill)) and not self.events.any(ET.OVERRIDE_LONGITUDINAL)
 
     actuators = CC.actuators
     actuators.longControlState = self.LoC.long_control_state
@@ -632,7 +649,7 @@ class Controls:
     recent_steer_pressed = (self.sm.frame - self.last_steering_pressed_frame)*DT_CTRL < 2.0
 
     # Send a "steering required alert" if saturation count has reached the limit
-    if lac_log.active and not recent_steer_pressed:
+    if lac_log.active and not recent_steer_pressed and CS.madsEnabled:
       if self.CP.lateralTuning.which() == 'torque' and not self.joystick_mode:
         undershooting = abs(lac_log.desiredLateralAccel) / abs(1e-3 + lac_log.actualLateralAccel) > 1.2
         turning = abs(lac_log.desiredLateralAccel) > 1.0
