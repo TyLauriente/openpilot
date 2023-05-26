@@ -11,6 +11,7 @@ from common.kalman.simple_kalman import KF1D
 from common.numpy_fast import clip
 from common.realtime import DT_CTRL
 from selfdrive.car import apply_hysteresis, gen_empty_fingerprint, scale_rot_inertia, scale_tire_stiffness
+from selfdrive.controls.lib.desire_helper import LANE_CHANGE_SPEED_MIN
 from selfdrive.controls.lib.drive_helpers import V_CRUISE_MAX, get_friction
 from selfdrive.controls.lib.events import Events
 from selfdrive.controls.lib.vehicle_model import VehicleModel
@@ -83,6 +84,12 @@ class CarInterfaceBase(ABC):
     self.CC = None
     if CarController is not None:
       self.CC = CarController(self.cp.dbc_name, CP, self.VM)
+
+    self.enable_mads = True
+    self.mads_disengage_lateral_on_brake = False
+    self.mads_ndlob = self.enable_mads and not self.mads_disengage_lateral_on_brake
+    self.acc_mads_combo = True
+    self.mads_event_lock = True
 
   @staticmethod
   def get_pid_accel_limits(CP, current_speed, cruise_speed):
@@ -259,7 +266,12 @@ class CarInterfaceBase(ABC):
     if cs_out.cruiseState.nonAdaptive:
       events.add(EventName.wrongCruiseMode)
     if cs_out.brakeHoldActive and self.CP.openpilotLongitudinalControl:
-      events.add(EventName.brakeHold)
+      if cs_out.madsEnabled:
+        cs_out.disengageByBrake = True
+      if cs_out.cruiseState.enabled:
+        events.add(EventName.brakeHold)
+      else:
+        events.add(EventName.silentBrakeHold)
     if cs_out.parkingBrake:
       events.add(EventName.parkBrake)
     if cs_out.accFaulted:
@@ -305,6 +317,125 @@ class CarInterfaceBase(ABC):
         events.add(EventName.pcmDisable)
 
     return events
+  
+
+def get_acc_mads(self, cruiseState_enabled, acc_enabled, mads_enabled):
+    if self.acc_mads_combo:
+      if not self.prev_acc_mads_combo and (cruiseState_enabled or acc_enabled):
+        mads_enabled = True
+      self.prev_acc_mads_combo = (cruiseState_enabled or acc_enabled)
+
+    return mads_enabled
+
+def get_sp_cancel_cruise_state(self, mads_enabled, acc_enabled=False):
+    mads_enabled = False if not self.enable_mads else mads_enabled
+    return mads_enabled, acc_enabled
+
+def get_sp_pedal_disengage(self, cs_out):
+    brake = cs_out.brakePressed and (not self.CS.out.brakePressed or not cs_out.standstill)
+    regen = cs_out.regenBraking and (not self.CS.out.regenBraking or not cs_out.standstill)
+    return brake or regen
+
+def get_sp_common_state(self, cs_out, CS, gear_allowed=True, gap_button=False):
+    if self.CP.pcmCruise:
+      if not cs_out.cruiseState.enabled and CS.out.cruiseState.enabled:
+        CS.madsEnabled, cs_out.cruiseState.enabled = self.get_sp_cancel_cruise_state(CS.madsEnabled)
+
+    cs_out.cruiseState.enabled = cs_out.cruiseState.enabled if self.CP.pcmCruise else CS.accEnabled
+    if not self.enable_mads:
+      if cs_out.cruiseState.enabled and not CS.out.cruiseState.enabled:
+        CS.madsEnabled = True
+      elif not cs_out.cruiseState.enabled and CS.out.cruiseState.enabled:
+        CS.madsEnabled = False
+
+    self.toggle_exp_mode(gap_button)
+
+    cs_out.belowLaneChangeSpeed = cs_out.vEgo < LANE_CHANGE_SPEED_MIN and self.below_speed_pause
+
+    if cs_out.gearShifter in [GearShifter.park, GearShifter.reverse] or cs_out.doorOpen or \
+      (cs_out.seatbeltUnlatched and cs_out.gearShifter != GearShifter.park):
+      gear_allowed = False
+
+    cs_out.latActive = gear_allowed
+
+    if not CS.control_initialized:
+      CS.control_initialized = True
+
+    # Disable on rising edge of gas or brake. Also disable on brake when speed > 0.
+    if (cs_out.gasPressed and not self.CS.out.gasPressed and self.disengage_on_accelerator) or \
+      (cs_out.brakePressed and (not self.CS.out.brakePressed or not cs_out.standstill)) or \
+      (cs_out.regenBraking and (not self.CS.out.regenBraking or not cs_out.standstill)):
+      if CS.madsEnabled:
+        CS.disengageByBrake = True
+
+    cs_out.madsEnabled = CS.madsEnabled
+    cs_out.accEnabled = CS.accEnabled
+    cs_out.disengageByBrake = CS.disengageByBrake
+    cs_out.brakeLights |= cs_out.brakePressed or cs_out.brakeHoldActive or cs_out.parkingBrake or cs_out.regenBraking
+
+    return cs_out, CS
+
+def create_sp_events(self, CS, cs_out, events, main_enabled=False, allow_enable=True, enable_pressed=False,
+                       enable_from_brake=False, enable_pressed_long=False,
+                       enable_buttons=(ButtonType.accelCruise, ButtonType.decelCruise)):
+
+    if not cs_out.brakePressed and not cs_out.brakeHoldActive and not cs_out.parkingBrake and not cs_out.regenBraking:
+      if cs_out.disengageByBrake and cs_out.madsEnabled:
+        enable_pressed = True
+        enable_from_brake = True
+      CS.disengageByBrake = False
+      cs_out.disengageByBrake = False
+
+    for b in cs_out.buttonEvents:
+      # Enable OP long on falling edge of enable buttons (defaults to accelCruise and decelCruise, overridable per-port)
+      if not self.CP.pcmCruise:
+        if b.type in enable_buttons and not b.pressed:
+          enable_pressed = True
+          enable_pressed_long = True
+      # Disable on rising and falling edge of cancel for both stock and OP long
+      if b.type == ButtonType.cancel:
+        if not cs_out.madsEnabled:
+          events.add(EventName.buttonCancel)
+        elif not self.cruise_cancelled_btn:
+          self.cruise_cancelled_btn = True
+          events.add(EventName.manualLongitudinalRequired)
+      # do disable on MADS button if ACC is disabled
+      if b.type == ButtonType.altButton1 and b.pressed:
+        if not cs_out.madsEnabled:  # disabled MADS
+          if not cs_out.cruiseState.enabled:
+            events.add(EventName.buttonCancel)
+          else:
+            events.add(EventName.manualSteeringRequired)
+        else:  # enabled MADS
+          if not cs_out.cruiseState.enabled:
+            enable_pressed = True
+    if self.CP.pcmCruise:
+      # do disable on button down
+      if main_enabled:
+        if any(CS.main_buttons) and not cs_out.cruiseState.enabled:
+          if not cs_out.madsEnabled:
+            events.add(EventName.buttonCancel)
+      # do enable on both accel and decel buttons
+      if cs_out.cruiseState.enabled and not CS.out.cruiseState.enabled and allow_enable:
+        enable_pressed = True
+        enable_pressed_long = True
+      elif not cs_out.cruiseState.enabled:
+        if not cs_out.madsEnabled:
+          events.add(EventName.buttonCancel)
+        elif not self.enable_mads:
+          cs_out.madsEnabled = False
+    if enable_pressed:
+      if enable_from_brake:
+        events.add(EventName.silentButtonEnable)
+      else:
+        events.add(EventName.buttonEnable)
+    if cs_out.disengageByBrake and not cs_out.standstill and enable_pressed_long:
+      events.add(EventName.cruiseEngageBlocked)
+
+    if cs_out.cruiseState.enabled:
+      self.cruise_cancelled_btn = False
+
+    return events, cs_out
 
 
 class RadarInterfaceBase(ABC):
@@ -336,6 +467,11 @@ class CarStateBase(ABC):
     self.right_blinker_prev = False
     self.cluster_speed_hyst_gap = 0.0
     self.cluster_min_speed = 0.0  # min speed before dropping to 0
+
+    self.madsEnabled = True
+    self.disengageByBrake = False
+    self.mads_enabled = True
+    self.prev_mads_enabled = True
 
     # Q = np.matrix([[0.0, 0.0], [0.0, 100.0]])
     # R = 0.3
