@@ -4,11 +4,12 @@ from common.conversions import Conversions as CV
 from panda import Panda
 from selfdrive.car.toyota.values import Ecu, CAR, DBC, ToyotaFlags, CarControllerParams, TSS2_CAR, RADAR_ACC_CAR, NO_DSU_CAR, \
                                         MIN_ACC_SPEED, EPS_SCALE, EV_HYBRID_CAR, UNSUPPORTED_DSU_CAR, NO_STOP_TIMER_CAR, ANGLE_CONTROL_CAR
-from selfdrive.car import STD_CARGO_KG, scale_tire_stiffness, get_safety_config
+from selfdrive.car import STD_CARGO_KG, create_button_event, scale_tire_stiffness, get_safety_config, create_mads_event
 from selfdrive.car.interfaces import CarInterfaceBase
 
+ButtonType = car.CarState.ButtonEvent.Type
 EventName = car.CarEvent.EventName
-
+GearShifter = car.CarState.GearShifter
 
 class CarInterface(CarInterfaceBase):
   @staticmethod
@@ -258,8 +259,57 @@ class CarInterface(CarInterfaceBase):
   def _update(self, c):
     ret = self.CS.update(self.cp, self.cp_cam)
 
+    buttonEvents = []
+
+    self.CS.mads_enabled = False if not self.CS.control_initialized else ret.cruiseState.available
+
+    if ret.cruiseState.available:
+      if self.enable_mads:
+        if not self.CS.prev_mads_enabled and self.CS.mads_enabled:
+          self.CS.madsEnabled = True
+        if self.CS.lta_status_active:
+          if (self.CS.prev_lkas_enabled == 16 and self.CS.lkas_enabled == 0) or \
+            (self.CS.prev_lkas_enabled == 0 and self.CS.lkas_enabled == 16):
+            self.CS.madsEnabled = not self.CS.madsEnabled
+        else:
+          if (not self.CS.prev_lkas_enabled and self.CS.lkas_enabled) or \
+            (self.CS.prev_lkas_enabled == 1 and not self.CS.lkas_enabled):
+            self.CS.madsEnabled = not self.CS.madsEnabled
+        self.CS.madsEnabled = self.get_acc_mads(ret.cruiseState.enabled, self.CS.accEnabled, self.CS.madsEnabled)
+    else:
+      self.CS.madsEnabled = False
+
+    if (not ret.cruiseState.enabled and self.CS.out.cruiseState.enabled) or \
+       self.get_sp_pedal_disengage(ret):
+      self.CS.madsEnabled, self.CS.accEnabled = self.get_sp_cancel_cruise_state(self.CS.madsEnabled)
+      ret.cruiseState.enabled = False if self.CP.pcmCruise else self.CS.accEnabled
+
+    ret, self.CS = self.get_sp_common_state(ret, self.CS)
+
+    # CANCEL
+    if self.CS.out.cruiseState.enabled and not ret.cruiseState.enabled:
+      be = car.CarState.ButtonEvent.new_message()
+      be.pressed = True
+      be.type = ButtonType.cancel
+      buttonEvents.append(be)
+
+    # MADS BUTTON
+    if self.CS.out.madsEnabled != self.CS.madsEnabled:
+      if self.mads_event_lock:
+        buttonEvents.append(create_mads_event(self.mads_event_lock))
+        self.mads_event_lock = False
+    else:
+      if not self.mads_event_lock:
+        buttonEvents.append(create_mads_event(self.mads_event_lock))
+        self.mads_event_lock = True
+
+    ret.buttonEvents = buttonEvents
+
     # events
-    events = self.create_common_events(ret)
+    events = self.create_common_events(ret, extra_gears=[GearShifter.sport, GearShifter.low, GearShifter.brake],
+                                       pcm_enable=False)
+
+    events, ret = self.create_sp_events(self.CS, ret, events)
 
     if self.CP.openpilotLongitudinalControl:
       if ret.cruiseState.standstill and not ret.brakePressed and not self.CP.enableGasInterceptor:
